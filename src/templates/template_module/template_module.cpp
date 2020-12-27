@@ -40,6 +40,12 @@
 #include <uORB/topics/parameter_update.h>
 #include <uORB/topics/sensor_combined.h>
 
+// заголовочники
+#include <uORB/uORB.h>
+#include <uORB/topics/vehicle_acceleration.h>
+#include <uORB/topics/vehicle_attitude.h>
+#include <math.h>
+#include <poll.h>
 
 int TemplateModule::print_status()
 {
@@ -138,10 +144,28 @@ TemplateModule::TemplateModule(int example_param, bool example_flag)
 void TemplateModule::run()
 {
 	// Example: run the loop synchronized to the sensor_combined topic publication
-	int sensor_combined_sub = orb_subscribe(ORB_ID(sensor_combined));
+	//int sensor_combined_sub = orb_subscribe(ORB_ID(sensor_combined));
 
 	px4_pollfd_struct_t fds[1];
 	fds[0].fd = sensor_combined_sub;
+	fds[0].events = POLLIN;
+
+// **********************
+	/* subscribe to vehicle_acceleration topic */
+	int sensor_sub_fd = orb_subscribe(ORB_ID(vehicle_acceleration));
+
+	/* limit the update rate to 5 Hz */
+	orb_set_interval(sensor_sub_fd, 2000);
+
+	/* advertise attitude topic */
+	struct vehicle_attitude_s att;
+	memset(&att, 0, sizeof(att));
+	//orb_advert_t att_pub = orb_advertise(ORB_ID(vehicle_attitude), &att);
+
+
+	px4_pollfd_struct_t fds[1];
+	//fds[0].fd = sensor_combined_sub;
+	fds[0].fd = sensor_sub_fd;
 	fds[0].events = POLLIN;
 
 	// initialize parameters
@@ -163,16 +187,44 @@ void TemplateModule::run()
 
 		} else if (fds[0].revents & POLLIN) {
 
-			struct sensor_combined_s sensor_combined;
-			orb_copy(ORB_ID(sensor_combined), sensor_combined_sub, &sensor_combined);
+			//struct sensor_combined_s sensor_combined;
+			//orb_copy(ORB_ID(sensor_combined), sensor_combined_sub, &sensor_combined);
 			// TODO: do something with the data...
+			//начало
+
+			//PX4_INFO("Hello world\n");
+			struct vehicle_acceleration_s accel;
+				/* copy sensors raw data into local buffer */
+				orb_copy(ORB_ID(vehicle_acceleration), sensor_sub_fd, &accel);
+				PX4_INFO("Accelerometer:\t%8.4f\t%8.4f\t%8.4f",
+					 (double)accel.xyz[0],
+					 (double)accel.xyz[1],
+					 (double)accel.xyz[2]);
+
+				/* set att and publish this information for other apps
+				 the following does not have any meaning, it's just an example
+				*/
+				double x, y, z;
+				x = accel.xyz[0];
+				y = accel.xyz[1];
+				z = accel.xyz[2];
+
+				//double g = sqrt(x*x + y*y + z*z);
+
+
+				double rg = 180.0 / 3.1415;
+
+				PX4_INFO("Angles:\tkren = %8.4f\tteta = %8.4f\n",
+					 atan2(-y, -z) * rg,
+					atan2( -x, sqrt(y*y+z*z)) * rg);
 
 		}
 
 		parameters_update();
 	}
 
-	orb_unsubscribe(sensor_combined_sub);
+	//orb_unsubscribe(sensor_combined_sub);
+	orb_unsubscribe(sensor_sub_fd);
 }
 
 void TemplateModule::parameters_update(bool force)
